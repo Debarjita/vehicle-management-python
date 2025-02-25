@@ -1,4 +1,4 @@
-# models.py
+# api/models/organization.py
 from django.db import models
 
 class Organization(models.Model):
@@ -9,14 +9,17 @@ class Organization(models.Model):
     speed_limit_policy = models.CharField(max_length=255, default='50 km/h')
     parent_org = models.ForeignKey(
         'self', 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
         related_name='child_orgs'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
+    
+    def __str__(self):
+        return self.name
+    
     def to_dict(self):
         """Convert organization to dictionary format"""
         return {
