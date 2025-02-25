@@ -56,6 +56,9 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 }
 
+# NHTSA url 
+NHTSA_API_URL = 'https://vpic.nhtsa.dot.gov/api/'
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
