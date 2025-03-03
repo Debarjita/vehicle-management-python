@@ -1,5 +1,5 @@
 #this is a test change 
-from django.urls import path
+from django.urls import path, include
 from .views import auth_views
 from .views import org_views
 
@@ -18,4 +18,9 @@ from .views import vehicle_views
 urlpatterns += [
     path('vehicles/decode/<str:vin>/', vehicle_views.decode_vin, name='decode_vin'),
     path('vehicles/', vehicle_views.add_vehicle, name='add_vehicle'),
+]
+
+urlpatterns = [
+    path('orgs/', include('api.views.org_urls')),  # Organization routes
+    path('vehicles/', include('api.views.vehicle_urls')),  # Vehicle routes
 ]

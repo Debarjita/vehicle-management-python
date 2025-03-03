@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
-
+import os
 from pathlib import Path
 from datetime import timedelta
 
@@ -25,9 +25,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-w6zrzhjbq=y9of&8j0+-r-5v!o4roy6+2xb(25b43uf0hh@06c'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
-ALLOWED_HOSTS = []
 
 
 # Application definition
@@ -57,9 +57,12 @@ SIMPLE_JWT = {
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': settings.SECRET_KEY,
 }
+JWT_SECRET = os.environ.get('JWT_SECRET', 'default-jwt-secret-for-development')
+JWT_ALGORITHM = 'HS256'
+JWT_EXPIRATION = 86400  # 24 hours in seconds
 
 # NHTSA url 
-NHTSA_API_URL = 'https://vpic.nhtsa.dot.gov/api/'
+NHTSA_API_URL = os.environ.get('NHTSA_API_URL', 'https://vpic.nhtsa.dot.gov/api/')
 
 
 MIDDLEWARE = [
@@ -100,8 +103,12 @@ WSGI_APPLICATION = 'vehicle_management.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',  # Using PostgreSQL as an example
+        'NAME': os.environ.get('DB_NAME', 'mtq'),
+        'USER': os.environ.get('DB_USER', 'postgres'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
 
@@ -124,6 +131,18 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# mtq/settings.py
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",  # Use your Redis URI from environment variables here
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
@@ -135,6 +154,9 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
+
+# Port setting (for use with custom management commands or scripts)
+PORT = int(os.environ.get('PORT', 8000))
 
 
 # Static files (CSS, JavaScript, Images)
