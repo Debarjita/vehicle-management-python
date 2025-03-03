@@ -74,7 +74,7 @@ def update_org(request, org_id):
         
         # Propagate changes to child organizations if parent exists
         if org.parent_org:
-            await update_child_org_policies(org)
+            update_child_org_policies(org)
         
         return Response(org.to_dict())
     
