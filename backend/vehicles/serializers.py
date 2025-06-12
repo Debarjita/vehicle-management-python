@@ -15,7 +15,15 @@ class RecursiveOrgSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Organization
-        fields = ['name', 'account', 'website', 'fuelReimbursementPolicy', 'resolved_fuel_policy', 'speedLimitPolicy', 'resolved_speed_policy', 'children']
+        fields = ['id','name', 'account', 'website', 'fuelReimbursementPolicy', 'resolved_fuel_policy', 'speedLimitPolicy', 'resolved_speed_policy','parent', 'children'
+                  ]
+
+        extra_kwargs = {
+            'parent': {'required': False, 'allow_null': True}
+        }
+        
+    def create(self, validated_data):
+        return Organization.objects.create(**validated_data)
 
     def get_resolved_fuel_policy(self, obj):
         current = obj

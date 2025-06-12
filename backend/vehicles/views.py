@@ -7,6 +7,8 @@ from rest_framework.authentication import TokenAuthentication
 from .models import Vehicle, Organization
 from .serializers import VehicleSerializer, RecursiveOrgSerializer
 from django.core.cache import cache
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 import pytesseract
 import cv2
@@ -41,6 +43,9 @@ def upload_image(request):
         text = pytesseract.image_to_string(gray)
         return Response({"recognized_text": text.strip()})
     except Exception as e:
+        import traceback
+        print("OCR Exception:", e)
+        traceback.print_exc()  # 👈 This will show the exact error + line number
         return Response({"error": str(e)}, status=500)
 
 # VIN Decoding from Request
@@ -84,9 +89,13 @@ def decode_vin(request, vin):
             "horsepower": result.get("EngineHP")
         }
         cache.set(vin, decoded, timeout=3600)
+        vin_call_timestamps.append(now)
         return Response(decoded)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+    
+
+
 
 # POST /api/vehicles
 @api_view(['POST'])
@@ -136,6 +145,17 @@ def add_vehicle(request):
     serializer = VehicleSerializer(vehicle)
     return Response(serializer.data, status=201)
 
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def create_organization(request):
+    serializer = RecursiveOrgSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=201)
+    return Response(serializer.errors, status=400)
+
+
 # GET /api/orgs-list/
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication])
@@ -144,3 +164,55 @@ def get_all_organizations(request):
     root_orgs = Organization.objects.filter(parent__isnull=True)
     serializer = RecursiveOrgSerializer(root_orgs, many=True)
     return Response(serializer.data)
+
+
+@api_view(['PATCH'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def update_organization(request, pk):
+    try:
+        org = Organization.objects.get(pk=pk)
+    except Organization.DoesNotExist:
+        return Response({'error': 'Organization not found'}, status=404)
+
+    # 🛡️ Validate Rule (c)
+    if 'fuelReimbursementPolicy' in request.data and org.parent:
+        inherited = org.parent.fuelReimbursementPolicy
+        if inherited and org.fuelReimbursementPolicy == inherited:
+            return Response(
+                {'error': 'Cannot override inherited fuelReimbursementPolicy. Patch the parent.'},
+                status=400
+            )
+
+    # Store original values
+    old_fuel = org.fuelReimbursementPolicy
+    old_speed = org.speedLimitPolicy
+
+    serializer = RecursiveOrgSerializer(org, data=request.data, partial=True)
+    if serializer.is_valid():
+        updated = serializer.save()
+
+        # 🌀 Rule (b)
+        if 'fuelReimbursementPolicy' in request.data and updated.fuelReimbursementPolicy != old_fuel:
+            propagate_fuel_policy(updated)
+
+        # 🌀 Rule (g)
+        if 'speedLimitPolicy' in request.data and updated.speedLimitPolicy != old_speed:
+            propagate_speed_policy(updated)
+
+        return Response(serializer.data)
+
+    return Response(serializer.errors, status=400)
+
+def propagate_fuel_policy(org):
+    for child in org.children.all():
+        child.fuelReimbursementPolicy = org.fuelReimbursementPolicy
+        child.save()
+        propagate_fuel_policy(child)
+
+def propagate_speed_policy(org):
+    for child in org.children.all():
+        if not child.speedLimitPolicy:  # if not overridden
+            child.speedLimitPolicy = org.speedLimitPolicy
+            child.save()
+            propagate_speed_policy(child)
