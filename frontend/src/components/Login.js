@@ -1,38 +1,35 @@
-import React, { useState } from 'react';
-import axios from 'axios';
+import React, { useState } from "react";
+import axios from "axios";
 
-function Login({ onLogin }) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
+function Login({ setToken, setRole }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
-  const handleLogin = async () => {
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError("");
     try {
-      const res = await axios.post('http://localhost:8000/api/token/', {
-        username,
-        password
+      const res = await axios.post("http://localhost:8000/api/token/", {
+        username, password
       });
-
-      const { access, refresh } = res.data;
-      localStorage.setItem('accessToken', access);
-      localStorage.setItem('refreshToken', refresh);
-      localStorage.setItem('userRole', res.data.role);
-      setMessage('✅ Login success!');
-      onLogin && onLogin();
+      const { access } = res.data;
+      localStorage.setItem("accessToken", access);
+      setToken(access);
+      //setRole(role); // Your backend should send role; if not, fetch after login.
     } catch (err) {
-      setMessage('❌ Login failed: ' + (err.response?.data?.detail || 'Unknown error'));
+      setError("Login failed");
     }
   };
 
   return (
-    <div>
-      <h2>Login (JWT)</h2>
-      <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
-      <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      <button onClick={handleLogin}>Login</button>
-      <p>{message}</p>
-    </div>
+    <form onSubmit={handleLogin}>
+      <h2>Login</h2>
+      <input placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} />
+      <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
+      <button type="submit">Login</button>
+      {error && <div style={{color:"red"}}>{error}</div>}
+    </form>
   );
 }
-
 export default Login;
