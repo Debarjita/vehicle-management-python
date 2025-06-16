@@ -2,11 +2,14 @@
 import os
 from pathlib import Path
 
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'your-secret-key'
 DEBUG = True
 ALLOWED_HOSTS = []
+AUTH_USER_MODEL = 'accounts.User'
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -19,6 +22,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'vehicles',
     'corsheaders',
+    'accounts'
 ]
 
 MIDDLEWARE = [
@@ -82,11 +86,12 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
 }
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend'
+]
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
-    ],
+    
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
@@ -95,5 +100,9 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'user': '100/hour',
-    },
+    },   
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication'  # ✅ Use string here
+    ]
+
 }

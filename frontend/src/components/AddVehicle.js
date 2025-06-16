@@ -13,12 +13,12 @@ function AddVehicle() {
 
 
   const handleSubmit = async () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken');
     try {
          await axios.post(
         'http://localhost:8000/api/vehicles/',
         { vin, org, make, model, year, mileage },
-        { headers: { Authorization: `Token ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       setMessage('Vehicle added successfully');
     } catch (err) {

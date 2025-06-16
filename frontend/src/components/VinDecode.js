@@ -6,10 +6,10 @@ function VinDecode() {
   const [decoded, setDecoded] = useState(null);
 
   const handleDecode = async () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken');
     try {
       const res = await axios.get(`http://localhost:8000/api/decode-vin/${vin}/`, {
-        headers: { Authorization: `Token ${token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       setDecoded(res.data);
     } catch (err) {

@@ -1,3 +1,4 @@
+//frontend/src/OrgManager.js
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
@@ -16,10 +17,11 @@ function OrgManager() {
 
   useEffect(() => {
     const fetchOrgs = async () => {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
+      console.log("📦 accessToken in OrgTree:", token);
       try {
         const res = await axios.get('http://localhost:8000/api/orgs-list/', {
-          headers: { Authorization: `Token ${token}` }
+          headers: { Authorization: `Bearer ${token}` }
         });
         setOrgList(flattenOrgs(res.data)); // use flat list
       } catch (err) {
@@ -46,7 +48,7 @@ function OrgManager() {
   };
 
   const handleSubmit = async () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken');
     try {
       if (mode === 'create') {
         const body = { ...form };
@@ -59,12 +61,12 @@ function OrgManager() {
         console.log('Submitting org:', body);
 
         await axios.post('http://localhost:8000/api/orgs/', body, {
-        headers: { Authorization: `Token ${token}` }
+        headers: { Authorization: `Bearer ${token}` }
         });
         setMessage('Organization created ✅');
       } else {
           await axios.patch(`http://localhost:8000/api/orgs/${form.id}/`, form, {
-          headers: { Authorization: `Token ${token}` }
+          headers: { Authorization: `Bearer ${token}` }
         });
         setMessage('Organization patched ✅');
       }
@@ -104,9 +106,7 @@ function OrgManager() {
       <input name="website" placeholder="Website" value={form.website} onChange={handleChange} />
       <input name="fuelReimbursementPolicy" placeholder="Fuel Reimbursement Policy" value={form.fuelReimbursementPolicy} onChange={handleChange} />
       <input name="speedLimitPolicy" placeholder="Speed Limit Policy" value={form.speedLimitPolicy} onChange={handleChange} />
-      {mode === 'create' && (
-        <input name="parent" placeholder="Parent Org Name (optional)" value={form.parent} onChange={handleChange} />
-      )}
+      
       <br />
       <button onClick={handleSubmit}>{mode === 'create' ? 'Create' : 'Patch'}</button>
       <p>{message}</p>

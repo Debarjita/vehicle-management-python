@@ -24,3 +24,17 @@ class Vehicle(models.Model):
 
     def __str__(self):
         return f"{self.license_plate or self.vin}"
+
+class EntryLog(models.Model):
+    ACTION_CHOICES = [
+        ('ENTRY', 'Entry'),
+        ('EXIT', 'Exit')
+    ]
+
+    vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE)
+    action = models.CharField(choices=ACTION_CHOICES, max_length=10)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True)
+
+    def __str__(self):
+        return f"{self.vehicle.vin} - {self.action} @ {self.timestamp}"

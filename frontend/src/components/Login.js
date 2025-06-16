@@ -1,38 +1,38 @@
-// src/Login.js
 import React, { useState } from 'react';
 import axios from 'axios';
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleLogin = async () => {
     try {
-      const res = await axios.post('http://localhost:8000/api/token-auth/', {
+      const res = await axios.post('http://localhost:8000/api/token/', {
         username,
-        password,
+        password
       });
-      localStorage.setItem('token', res.data.token);
-      console.log(res);
-      localStorage.setItem('token', res.data.token);
-      onLogin(); // notify App
+
+      const { access, refresh } = res.data;
+      localStorage.setItem('accessToken', access);
+      localStorage.setItem('refreshToken', refresh);
+      localStorage.setItem('userRole', res.data.role);
+      setMessage('✅ Login success!');
+      onLogin && onLogin();
     } catch (err) {
-      alert('Invalid credentials');
+      setMessage('❌ Login failed: ' + (err.response?.data?.detail || 'Unknown error'));
     }
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Login</h2>
-      <form onSubmit={handleSubmit}>
-        <input placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} /><br />
-        <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} /><br />
-        <button type="submit">Login</button>
-      </form>
+    <div>
+      <h2>Login (JWT)</h2>
+      <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+      <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      <button onClick={handleLogin}>Login</button>
+      <p>{message}</p>
     </div>
   );
 }
-
 
 export default Login;

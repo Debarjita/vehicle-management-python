@@ -6,14 +6,21 @@ function OrgTree() {
 
   useEffect(() => {
     const fetchOrgs = async () => {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
+
+      if (!token) {
+        console.warn("🚫 No access token found for /api/orgs-list/");
+        return;
+      }
+
       try {
         const res = await axios.get('http://localhost:8000/api/orgs-list/', {
-          headers: { Authorization: `Token ${token}` }
+          headers: { Authorization: `Bearer ${token}` }
         });
-        setOrgs(res.data);
+
+        setOrgs(res.data); // ✅ setOrgs not setOrgList
       } catch (err) {
-        console.error(err);
+        console.error("❌ Error fetching orgs:", err.response?.data || err.message);
       }
     };
 

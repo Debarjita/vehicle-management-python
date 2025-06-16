@@ -7,14 +7,18 @@ function VehicleList() {
 
   useEffect(() => {
     const fetchVehicles = async () => {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken'); // <--- Use the actual key you use for login!
       try {
         const res = await axios.get('http://localhost:8000/api/vehicles/', {
-          headers: { Authorization: `Token ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
         });
         setVehicles(res.data);
       } catch (err) {
         console.error('Error fetching vehicles:', err);
+        console.log('vehicles:', vehicles);
+
       }
     };
     fetchVehicles();

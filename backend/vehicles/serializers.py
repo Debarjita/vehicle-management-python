@@ -1,10 +1,15 @@
 # backend/vehicles/serializers.py
 from rest_framework import serializers
-from .models import Vehicle, Organization
+from .models import Vehicle, Organization,EntryLog
 
 class VehicleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Vehicle
+        fields = '__all__'
+
+class EntryLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EntryLog
         fields = '__all__'
 
 
