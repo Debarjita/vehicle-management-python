@@ -1,10 +1,10 @@
 # backend/vehicles/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import VehicleViewSet, vin_decode, upload_image,decode_vin
-from .views import get_all_organizations, create_organization, update_organization,available_vehicles,claim_vehicles
-from .views import log_vehicle_entry
-from accounts.views import create_user_with_role,list_users, update_user
+from .views import VehicleViewSet, vin_decode, upload_image, decode_vin
+from .views import get_all_organizations, create_organization, update_organization, available_vehicles, claim_vehicles
+from .views import log_vehicle_entry, add_vehicle
+from accounts.views import create_user_with_role, list_users, update_user
 from .views import (
     create_guard_or_driver, assign_driver_to_vehicle, generate_schedules,
     org_dashboard, record_attendance, verify_driver_vehicle, guard_dashboard,
@@ -16,16 +16,27 @@ router.register(r'vehicles', VehicleViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('vin-decode/', vin_decode),
-    path('decode-vin/<str:vin>/', decode_vin),  
-    path('upload-image/', upload_image),
-    path('orgs-list/', get_all_organizations),
-    path('orgs/', create_organization),
-    path('orgs/<int:pk>/', update_organization),
-    path('log-entry/', log_vehicle_entry),
-    path('create-user/', create_user_with_role),
-    path('users/', list_users),
-    path('users/<int:user_id>/', update_user),
+    
+    # Vehicle management
+    path('add-vehicle/', add_vehicle, name='add-vehicle'),
+    path('vin-decode/', vin_decode, name='vin-decode'),
+    path('decode-vin/<str:vin>/', decode_vin, name='decode-vin'),  
+    path('upload-image/', upload_image, name='upload-image'),
+    
+    # Organization management - FIXED PATHS
+    path('orgs-list/', get_all_organizations, name='orgs-list'),
+    path('orgs/', create_organization, name='create-organization'),  # This will be /api/orgs/
+    path('orgs/<int:pk>/', update_organization, name='update-organization'),
+    
+    # Logging
+    path('log-entry/', log_vehicle_entry, name='log-entry'),
+    
+    # User management - FIXED PATHS  
+    path('create-user/', create_user_with_role, name='create-user'),
+    path('users/', list_users, name='list-users'),  # This will be /api/users/
+    path('users/<int:user_id>/', update_user, name='update-user'),
+    
+    # Vehicle pool
     path('available/', available_vehicles, name='available-vehicles'),
     path('claim/', claim_vehicles, name='claim-vehicles'),
 

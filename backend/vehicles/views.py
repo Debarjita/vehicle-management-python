@@ -57,76 +57,159 @@ def upload_image(request):
         traceback.print_exc()  # 👈 This will show the exact error + line number
         return Response({"error": str(e)}, status=500)
 
-# VIN Decoding from Request
-@api_view(['POST'])
-@permission_classes([IsAdminOrOrgManager])
-def vin_decode(request):
-    vin = request.data.get('vin', '')
-    return decode_vin(request, vin)
-
-# NHTSA VIN Decode with caching + rate limit
 @api_view(['GET'])
-@permission_classes([IsAdminOrOrgManager])
+@permission_classes([IsAuthenticated])
 def decode_vin(request, vin):
+    """Decode VIN using NHTSA API with improved error handling"""
     vin = vin.strip().upper()
-    if not re.fullmatch(r'^[A-HJ-NPR-Z0-9]{17}$', vin):
-        return Response({"error": "Invalid VIN format"}, status=400)
-
-    cached = cache.get(vin)
-    if cached:
-        return Response(cached)
-
-    now = time.time()
-    vin_call_timestamps.append(now)
-    vin_call_timestamps[:] = [t for t in vin_call_timestamps if now - t < 60]
-    if len(vin_call_timestamps) > 5:
-        return Response({"error": "Rate limit exceeded. Try again later."}, status=429)
-
-    try:
-        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-        res = requests.get(url)
-        data = res.json()
-        result = data['Results'][0]
-        decoded = {
-            "vin": vin,
-            "make": result.get("Make"),
-            "model": result.get("Model"),
-            "year": result.get("ModelYear"),
-            "manufacturer": result.get("Manufacturer"),
-            "horsepower": result.get("EngineHP")
-        }
-        cache.set(vin, decoded, timeout=3600)
-        vin_call_timestamps.append(now)
-        return Response(decoded)
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
     
+    # Validate VIN format
+    if not re.fullmatch(r'^[A-HJ-NPR-Z0-9]{17}$', vin):
+        return Response({"error": "Invalid VIN format. Must be 17 characters."}, status=400)
+    
+    # Check cache first
+    cached_data = cache.get(f"vin_{vin}")
+    if cached_data:
+        print(f"📋 Returning cached VIN data for {vin}")
+        return Response(cached_data)
+    
+    # Handle test VIN
+    if vin == "TEST123456789ABCD" or vin.startswith("TEST"):
+        test_data = {
+            "vin": vin,
+            "make": "Toyota",
+            "model": "Camry",
+            "year": "2020",
+            "manufacturer": "Toyota Motor Corporation",
+            "body_class": "Sedan",
+            "engine_hp": "203",
+            "fuel_type": "Gasoline",
+            "api_status": "test_data"
+        }
+        cache.set(f"vin_{vin}", test_data, timeout=3600)
+        return Response(test_data)
+    
+    try:
+        # Call NHTSA API
+        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+        print(f"🌐 Calling NHTSA API: {url}")
+        
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        
+        data = response.json()
+        if not data.get('Results'):
+            return Response({"error": "No data returned from VIN service"}, status=400)
+            
+        result = data['Results'][0]
+        
+        # Extract information
+        decoded_data = {
+            "vin": vin,
+            "make": result.get("Make", "").strip() or "Unknown",
+            "model": result.get("Model", "").strip() or "Unknown", 
+            "year": result.get("ModelYear", "").strip() or "Unknown",
+            "manufacturer": result.get("Manufacturer", "").strip(),
+            "body_class": result.get("BodyClass", "").strip(),
+            "engine_hp": result.get("EngineHP", "").strip(),
+            "fuel_type": result.get("FuelTypePrimary", "").strip(),
+            "transmission": result.get("TransmissionStyle", "").strip(),
+            "drive_type": result.get("DriveType", "").strip(),
+            "vehicle_type": result.get("VehicleType", "").strip(),
+        }
+        
+        # Check for API errors
+        error_code = result.get("ErrorCode", "")
+        error_text = result.get("ErrorText", "")
+        
+        if error_code:
+            decoded_data["api_error_code"] = error_code
+            decoded_data["api_error_text"] = error_text
+            print(f"⚠️ NHTSA API warning for VIN {vin}: {error_code} - {error_text}")
+        
+        # If we got some useful data, proceed even with warnings
+        has_useful_data = any([
+            decoded_data["make"] != "Unknown",
+            decoded_data["model"] != "Unknown", 
+            decoded_data["year"] != "Unknown"
+        ])
+        
+        if not has_useful_data and error_code and error_code not in ["0", "", "8"]:
+            return Response({
+                "error": f"VIN decode failed: {error_text or 'No detailed data available'}",
+                "vin": vin,
+                "suggestion": "Try with a different VIN or check if the VIN is correct"
+            }, status=400)
+        
+        # Cache successful results
+        cache.set(f"vin_{vin}", decoded_data, timeout=3600)
+        
+        print(f"✅ VIN {vin} decoded: {decoded_data['make']} {decoded_data['model']} {decoded_data['year']}")
+        return Response(decoded_data)
+        
+    except requests.RequestException as e:
+        print(f"🌐 Network error decoding VIN {vin}: {e}")
+        return Response({
+            "error": f"Failed to connect to VIN service: {str(e)}",
+            "vin": vin
+        }, status=500)
+    except Exception as e:
+        print(f"❌ Unexpected error decoding VIN {vin}: {e}")
+        return Response({
+            "error": f"VIN decode error: {str(e)}",
+            "vin": vin
+        }, status=500)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def vin_decode(request):
+    """Alternative VIN decode endpoint for POST requests"""
+    vin = request.data.get('vin', '').strip().upper()
+    
+    if not vin:
+        return Response({"error": "VIN is required"}, status=400)
+    
+    # Create a fake request object to reuse the GET endpoint logic
+    class FakeRequest:
+        def __init__(self, user):
+            self.user = user
+    
+    fake_request = FakeRequest(request.user)
+    return decode_vin(fake_request, vin)
 
 
 # POST /api/vehicles
 @api_view(['POST'])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdminOrOrgManager])
 def add_vehicle(request):
     vin = request.data.get('vin', '').strip().upper()
     org_name = request.data.get('org', '').strip()
+    make = request.data.get('make', '').strip()
+    model = request.data.get('model', '').strip()
+    year = request.data.get('year')
+    mileage = request.data.get('mileage')
+    license_plate = request.data.get('license_plate', '').strip()
 
     if not re.fullmatch(r'^[A-HJ-NPR-Z0-9]{17}$', vin):
         return Response({"error": "Invalid VIN format."}, status=400)
 
-    try:
-        org = Organization.objects.get(name=org_name)
-    except Organization.DoesNotExist:
-        return Response({"error": "Organization does not exist."}, status=400)
-
     if Vehicle.objects.filter(vin=vin).exists():
         return Response({"error": "Vehicle already exists."}, status=400)
 
+    # Handle organization
+    org = None
+    if org_name:
+        try:
+            org = Organization.objects.get(name=org_name)
+        except Organization.DoesNotExist:
+            return Response({"error": "Organization does not exist."}, status=400)
+
+    # Try to get decoded data from cache first
     decoded = cache.get(vin)
     if not decoded:
         try:
             url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-            res = requests.get(url)
+            res = requests.get(url, timeout=10)
             data = res.json()
             result = data['Results'][0]
             decoded = {
@@ -139,18 +222,23 @@ def add_vehicle(request):
             }
             cache.set(vin, decoded, timeout=3600)
         except Exception as e:
-            return Response({"error": str(e)}, status=500)
+            print(f"VIN decode error: {e}")
+            # Continue with manual data if VIN decode fails
+            decoded = {"make": make, "model": model, "year": year}
 
+    # Create vehicle with provided or decoded data
     vehicle = Vehicle.objects.create(
         vin=vin,
-        make=decoded.get('make'),
-        model=decoded.get('model'),
-        year=decoded.get('year'),
-        org=org.name
+        make=make or decoded.get('make', ''),
+        model=model or decoded.get('model', ''),
+        year=int(year) if year else (int(decoded.get('year')) if decoded.get('year') else None),
+        mileage=int(mileage) if mileage else None,
+        license_plate=license_plate,
+        org=org
     )
+    
     serializer = VehicleSerializer(vehicle)
     return Response(serializer.data, status=201)
-
 @api_view(['POST'])
 @permission_classes([IsAdmin])
 def create_organization(request):
@@ -291,21 +379,73 @@ def create_guard_or_driver(request):
     )
     return Response({'message': f'{role} created successfully'})
 
-@api_view(['POST']) 
-@permission_classes([IsAuthenticated, IsOrgManager])
+@api_view(['POST'])
+@permission_classes([IsAdminOrOrgManager])
 def claim_vehicles(request):
-    """Org Manager selects vehicles from available pool"""
+    """Org Manager or Admin claims vehicles from available pool"""
     vehicle_ids = request.data.get('vehicle_ids', [])
+    org_id = request.data.get('org_id')  # For admin use
+    
+    if not vehicle_ids:
+        return Response({'error': 'No vehicle IDs provided'}, status=400)
+    
+    if not isinstance(vehicle_ids, list):
+        return Response({'error': 'vehicle_ids must be a list'}, status=400)
+    
+    # Determine target organization
+    if request.user.role == 'ADMIN':
+        if org_id:
+            try:
+                target_org = Organization.objects.get(id=org_id)
+            except Organization.DoesNotExist:
+                return Response({'error': 'Organization not found'}, status=400)
+        else:
+            return Response({'error': 'Admin must specify org_id'}, status=400)
+    else:
+        # Org Manager uses their own org
+        target_org = request.user.org
+        if not target_org:
+            return Response({'error': 'User has no organization assigned'}, status=400)
+    
+    print(f"🚗 Claiming vehicles: {vehicle_ids} for org: {target_org.name} by user: {request.user}")
     
     updated = 0
-    for vid in vehicle_ids:
-        vehicle = get_object_or_404(Vehicle, id=vid, org__isnull=True, status='AVAILABLE')
-        vehicle.org = request.user.org
-        vehicle.status = 'ASSIGNED'
-        vehicle.save()
-        updated += 1
+    errors = []
     
-    return Response({"claimed": updated})
+    for vehicle_id in vehicle_ids:
+        try:
+            # Get vehicle that is currently available (no org assigned)
+            vehicle = Vehicle.objects.get(id=vehicle_id, org__isnull=True)
+            
+            # Assign to target organization
+            vehicle.org = target_org
+            vehicle.status = 'ASSIGNED'  # Update status too
+            vehicle.save()
+            
+            updated += 1
+            print(f"✅ Claimed vehicle {vehicle_id}: {vehicle.license_plate or vehicle.vin} for {target_org.name}")
+            
+        except Vehicle.DoesNotExist:
+            error_msg = f"Vehicle {vehicle_id} not found or already claimed"
+            errors.append(error_msg)
+            print(f"❌ {error_msg}")
+        except Exception as e:
+            error_msg = f"Error claiming vehicle {vehicle_id}: {str(e)}"
+            errors.append(error_msg)
+            print(f"❌ {error_msg}")
+    
+    response_data = {
+        "claimed": updated,
+        "requested": len(vehicle_ids),
+        "organization": target_org.name,
+        "errors": errors
+    }
+    
+    if updated > 0:
+        response_data["message"] = f"Successfully claimed {updated} vehicle(s) for {target_org.name}"
+    
+    status_code = 200 if updated > 0 else 400
+    return Response(response_data, status=status_code)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsOrgManager]) 

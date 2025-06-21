@@ -18,11 +18,18 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def get_token(cls, user):
         token = super().get_token(user)
         token['role'] = user.role  # ✅ Add role to token payload
+        token['username'] = user.username  # Add username too
         return token
 
     def validate(self, attrs):
         data = super().validate(attrs)
-        data['role'] = self.user.role  # ✅ Add role to response body
+        # ✅ Add role and other user info to response body
+        data['role'] = self.user.role
+        data['username'] = self.user.username
+        data['user_id'] = self.user.id
+        if self.user.org:
+            data['org_id'] = self.user.org.id
+            data['org_name'] = self.user.org.name
         return data
 
 class CustomTokenObtainPairView(TokenObtainPairView):
