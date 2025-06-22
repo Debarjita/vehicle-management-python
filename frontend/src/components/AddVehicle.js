@@ -265,14 +265,22 @@ function AddVehicle() {
           <h3 style={{ margin: '0 0 15px 0' }}>Vehicle Details</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 15 }}>
             <div>
-              <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Organization</label>
+              <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>
+                Organization {localStorage.getItem('userRole') === 'ADMIN' ? '(Optional - leave blank for vehicle pool)' : '(Auto-assigned to your org)'}
+              </label>
               <input 
                 name="org"
-                placeholder="Organization name" 
+                placeholder={localStorage.getItem('userRole') === 'ADMIN' ? "Organization name or leave blank" : "Auto-assigned to your organization"} 
                 value={formData.org} 
                 onChange={handleChange}
                 style={{ width: '100%', padding: 8 }}
+                disabled={localStorage.getItem('userRole') !== 'ADMIN'}
               />
+              {localStorage.getItem('userRole') === 'ADMIN' && (
+                <small style={{ color: '#666', fontSize: 12 }}>
+                  Leave blank to add vehicle to unassigned pool for later organization assignment
+                </small>
+              )}
             </div>
             
             <div>
