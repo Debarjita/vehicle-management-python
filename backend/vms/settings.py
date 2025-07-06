@@ -20,9 +20,12 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework.authtoken',
+    'rest_framework_simplejwt',
     'vehicles',
     'corsheaders',
-    'accounts'
+    'accounts',
+    'channels',
+    'realtime',
 ]
 
 MIDDLEWARE = [
@@ -70,6 +73,12 @@ DATABASES = {
     }
 }
 
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+}
 
 AUTH_PASSWORD_VALIDATORS = []
 
@@ -105,4 +114,14 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication'  # ✅ Use string here
     ]
 
+}
+
+ASGI_APPLICATION = 'vms.asgi.application'
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6379)],
+        },
+    },
 }
