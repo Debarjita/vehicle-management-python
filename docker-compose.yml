@@ -1,0 +1,145 @@
+# docker-compose.yml - Development Environment
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: vms_main
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+
+  # Redis for caching and messaging
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./microservices/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - ORG_SERVICE_URL=http://organization-service:8002
+      - VEHICLE_SERVICE_URL=http://vehicle-service:8003
+      - AI_SERVICE_URL=http://ai-service:8004
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+      - auth-service
+      - organization-service
+      - vehicle-service
+      - ai-service
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./microservices/auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:12345@postgres/vms_auth
+      - SECRET_KEY=your-jwt-secret-key-here
+    depends_on:
+      - postgres
+
+  # Organization Service
+  organization-service:
+    build:
+      context: ./microservices/organization-service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://postgres:12345@postgres/vms_org
+    depends_on:
+      - postgres
+
+  # Vehicle Service
+  vehicle-service:
+    build:
+      context: ./microservices/vehicle-service
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql://postgres:12345@postgres/vms_vehicles
+    depends_on:
+      - postgres
+
+  # AI Service
+  ai-service:
+    build:
+      context: ./microservices/ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - api-gateway
+
+  # WebSocket Service for Real-time updates
+  websocket-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.websocket
+    ports:
+      - "8005:8005"
+    environment:
+      - DATABASE_URL=postgresql://postgres:12345@postgres/vms_main
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+
+  # Monitoring with Grafana
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:

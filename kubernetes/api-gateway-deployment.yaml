@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: vms
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: vms/api-gateway:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: AUTH_SERVICE_URL
+          value: "http://auth-service:8001"
+        - name: ORG_SERVICE_URL
+          value: "http://organization-service:8002"
+        - name: VEHICLE_SERVICE_URL
+          value: "http://vehicle-service:8003"
+        - name: AI_SERVICE_URL
+          value: "http://ai-service:8004"
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
