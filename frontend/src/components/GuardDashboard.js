@@ -1,18 +1,10 @@
-// frontend/src/components/GuardDashboard.js
+// frontend/src/components/GuardDashboard.js - SIMPLIFIED VERSION
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 function GuardDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
-  const [selectedUser, setSelectedUser] = useState('');
-  const [selectedAction, setSelectedAction] = useState('LOGIN');
-  const [faceImage, setFaceImage] = useState('');
-  const [verificationForm, setVerificationForm] = useState({
-    driver_id: '',
-    vehicle_id: '',
-    license_plate_image: '',
-    driver_face_image: ''
-  });
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
   const token = localStorage.getItem('accessToken');
@@ -20,91 +12,30 @@ function GuardDashboard() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const res = await axios.get('http://localhost:8000/api/vehicles/guard-dashboard/', {
+        setLoading(true);
+        const res = await axios.get('http://localhost:8000/api/guard-dashboard/', {
           headers: { Authorization: `Bearer ${token}` }
         });
         setDashboardData(res.data);
       } catch (error) {
         console.error('Guard dashboard error:', error);
-        setMessage('Error loading dashboard data');
+        setMessage('Error loading dashboard data: ' + (error.response?.data?.error || error.message));
+      } finally {
+        setLoading(false);
       }
     };
     
     loadData();
   }, [token]);
 
-  const recordAttendance = async () => {
-    if (!selectedUser) {
-      setMessage('Please select a user');
-      return;
-    }
-
-    try {
-      await axios.post('http://localhost:8000/api/vehicles/record-attendance/', {
-        action: selectedAction,
-        user_id: selectedUser,
-        face_image: faceImage
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMessage(`${selectedAction} recorded successfully for user`);
-      setFaceImage('');
-      // Reload dashboard data
-      const res = await axios.get('http://localhost:8000/api/vehicles/guard-dashboard/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setDashboardData(res.data);
-    } catch (error) {
-      setMessage('Error recording attendance: ' + (error.response?.data?.error || error.message));
-    }
-  };
-
-  const verifyDriverVehicle = async () => {
-    const { driver_id, vehicle_id } = verificationForm;
-    
-    if (!driver_id || !vehicle_id) {
-      setMessage('Please select both driver and vehicle');
-      return;
-    }
-
-    try {
-      await axios.post('http://localhost:8000/api/vehicles/verify-driver-vehicle/', verificationForm, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMessage('Driver-Vehicle verification completed successfully!');
-      setVerificationForm({
-        driver_id: '',
-        vehicle_id: '',
-        license_plate_image: '',
-        driver_face_image: ''
-      });
-      // Reload dashboard data
-      const res = await axios.get('http://localhost:8000/api/vehicles/guard-dashboard/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setDashboardData(res.data);
-    } catch (error) {
-      setMessage('Error in verification: ' + (error.response?.data?.error || error.message));
-    }
-  };
-
-  const handleFileUpload = (file, field) => {
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result;
-        if (field === 'face_image') {
-          setFaceImage(base64);
-        } else {
-          setVerificationForm(prev => ({
-            ...prev,
-            [field]: base64
-          }));
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  if (loading) {
+    return (
+      <div style={{ padding: 20 }}>
+        <h2>Guard Dashboard</h2>
+        <p>Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 20 }}>
@@ -114,167 +45,149 @@ function GuardDashboard() {
         <div style={{ 
           padding: 10, 
           margin: '10px 0', 
-          backgroundColor: message.includes('Error') ? '#ffebee' : '#e8f5e8',
-          color: message.includes('Error') ? '#c62828' : '#2e7d32',
+          backgroundColor: '#ffebee',
+          color: '#c62828',
           borderRadius: 4 
         }}>
           {message}
         </div>
       )}
 
-      {/* My Shift Info */}
-      {dashboardData && (
-        <div style={{ marginBottom: 30, padding: 15, border: '1px solid #ddd', borderRadius: 5 }}>
-          <h3>My Shift Today</h3>
-          {dashboardData.my_shift.start_time ? (
-            <p>
-              <strong>Shift Time:</strong> {dashboardData.my_shift.start_time} - {dashboardData.my_shift.end_time}
-            </p>
-          ) : (
-            <p style={{ color: '#666' }}>No shift assigned for today</p>
-          )}
-        </div>
-      )}
-
-      {/* Record Attendance */}
-      <div style={{ marginBottom: 30, padding: 15, border: '1px solid #ddd', borderRadius: 5 }}>
-        <h3>Record Attendance</h3>
-        <div style={{ marginBottom: 15 }}>
-          <label>Select User:</label>
-          <select 
-            value={selectedUser} 
-            onChange={e => setSelectedUser(e.target.value)}
-            style={{ padding: 8, marginLeft: 10, width: 200 }}
-          >
-            <option value="">Select User</option>
-            {dashboardData?.assigned_drivers?.map(driver => (
-              <option key={driver.id} value={driver.id}>{driver.name}</option>
-            ))}
-          </select>
-        </div>
-        
-        <div style={{ marginBottom: 15 }}>
-          <label>Action:</label>
-          <select 
-            value={selectedAction} 
-            onChange={e => setSelectedAction(e.target.value)}
-            style={{ padding: 8, marginLeft: 10 }}
-          >
-            <option value="LOGIN">Login</option>
-            <option value="LOGOUT">Logout</option>
-          </select>
-        </div>
-
-        <div style={{ marginBottom: 15 }}>
-          <label>Face Image:</label>
-          <input 
-            type="file" 
-            accept="image/*"
-            onChange={e => handleFileUpload(e.target.files[0], 'face_image')}
-            style={{ marginLeft: 10 }}
-          />
-        </div>
-
-        <button 
-          onClick={recordAttendance}
-          disabled={!selectedUser}
-          style={{ 
-            padding: 10, 
-            backgroundColor: selectedUser ? '#28a745' : '#ccc', 
-            color: 'white', 
-            border: 'none' 
-          }}
-        >
-          Record {selectedAction}
-        </button>
-      </div>
-
-      {/* Vehicle Verification */}
-      <div style={{ marginBottom: 30, padding: 15, border: '1px solid #ddd', borderRadius: 5 }}>
-        <h3>Verify Driver-Vehicle</h3>
-        
-        <div style={{ marginBottom: 15 }}>
-          <label>Select Driver:</label>
-          <select 
-            value={verificationForm.driver_id} 
-            onChange={e => setVerificationForm(prev => ({...prev, driver_id: e.target.value}))}
-            style={{ padding: 8, marginLeft: 10, width: 200 }}
-          >
-            <option value="">Select Driver</option>
-            {dashboardData?.assigned_drivers?.map(driver => (
-              <option key={driver.id} value={driver.id}>{driver.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ marginBottom: 15 }}>
-          <label>Select Vehicle:</label>
-          <select 
-            value={verificationForm.vehicle_id} 
-            onChange={e => setVerificationForm(prev => ({...prev, vehicle_id: e.target.value}))}
-            style={{ padding: 8, marginLeft: 10, width: 200 }}
-          >
-            <option value="">Select Vehicle</option>
-            {dashboardData?.assigned_drivers?.map(driver => (
-              driver.vehicle && (
-                <option key={driver.vehicle_id} value={driver.vehicle_id}>
-                  {driver.vehicle}
-                </option>
-              )
-            ))}
-          </select>
-        </div>
-
-        <div style={{ marginBottom: 15 }}>
-          <label>License Plate Image:</label>
-          <input 
-            type="file" 
-            accept="image/*"
-            onChange={e => handleFileUpload(e.target.files[0], 'license_plate_image')}
-            style={{ marginLeft: 10 }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 15 }}>
-          <label>Driver Face Image:</label>
-          <input 
-            type="file" 
-            accept="image/*"
-            onChange={e => handleFileUpload(e.target.files[0], 'driver_face_image')}
-            style={{ marginLeft: 10 }}
-          />
-        </div>
-
-        <button 
-          onClick={verifyDriverVehicle}
-          disabled={!verificationForm.driver_id || !verificationForm.vehicle_id}
-          style={{ 
-            padding: 10, 
-            backgroundColor: verificationForm.driver_id && verificationForm.vehicle_id ? '#007bff' : '#ccc', 
-            color: 'white', 
-            border: 'none' 
-          }}
-        >
-          Verify Driver-Vehicle
-        </button>
-      </div>
-
-      {/* Assigned Drivers */}
-      <div style={{ padding: 15, border: '1px solid #ddd', borderRadius: 5 }}>
-        <h3>Assigned Drivers Today</h3>
-        {dashboardData?.assigned_drivers?.length > 0 ? (
+      {/* My Shift Today */}
+      <div style={{ marginBottom: 30, padding: 20, border: '1px solid #ddd', borderRadius: 8, backgroundColor: '#f8f9fa' }}>
+        <h3 style={{ margin: '0 0 15px 0', color: '#2e7d32' }}>My Shift Today</h3>
+        {dashboardData?.my_shift ? (
           <div>
-            {dashboardData.assigned_drivers.map(driver => (
-              <div key={driver.id} style={{ margin: '10px 0', padding: 10, backgroundColor: '#f8f9fa' }}>
-                <strong>{driver.name}</strong>
-                <br />
-                Vehicle: {driver.vehicle || 'No vehicle assigned'}
+            {dashboardData.my_shift.start_time ? (
+              <div style={{ 
+                padding: 15, 
+                backgroundColor: '#e8f5e8', 
+                borderRadius: 4,
+                border: '1px solid #c8e6c9'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong>Shift Time:</strong> {dashboardData.my_shift.start_time} - {dashboardData.my_shift.end_time}
+                  </div>
+                  <div style={{ 
+                    padding: '4px 12px', 
+                    backgroundColor: '#2e7d32',
+                    color: 'white',
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontWeight: 'bold'
+                  }}>
+                    {dashboardData.my_shift.status}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ 
+                padding: 15, 
+                backgroundColor: '#fff3cd', 
+                color: '#856404', 
+                borderRadius: 4,
+                border: '1px solid #ffeaa7'
+              }}>
+                ⚠️ No shift assigned for today
+              </div>
+            )}
+          </div>
+        ) : (
+          <p style={{ color: '#666' }}>Loading shift information...</p>
+        )}
+      </div>
+
+      {/* Assigned Drivers and Their Schedules */}
+      <div style={{ padding: 20, border: '1px solid #ddd', borderRadius: 8, backgroundColor: '#fff' }}>
+        <h3 style={{ margin: '0 0 20px 0', color: '#1565c0' }}>
+          Assigned Drivers Today ({dashboardData?.total_drivers_today || 0})
+        </h3>
+        
+        {dashboardData?.assigned_drivers?.length > 0 ? (
+          <div style={{ display: 'grid', gap: 15 }}>
+            {dashboardData.assigned_drivers.map((driver, index) => (
+              <div key={driver.id} style={{ 
+                padding: 20,
+                border: '1px solid #e0e0e0',
+                borderRadius: 8,
+                backgroundColor: '#fafafa',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 8 }}>
+                    👤 {driver.name}
+                  </div>
+                  <div style={{ color: '#666', marginBottom: 4 }}>
+                    <strong>Vehicle:</strong> {driver.vehicle || 'No Vehicle Assigned'}
+                  </div>
+                  <div style={{ color: '#666', fontSize: 14 }}>
+                    <strong>Schedule:</strong> {driver.shift_start} - {driver.shift_end}
+                  </div>
+                </div>
+                
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ 
+                    padding: '6px 12px', 
+                    backgroundColor: driver.status === 'Active' ? '#28a745' : '#6c757d',
+                    color: 'white',
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    marginBottom: 8
+                  }}>
+                    {driver.status}
+                  </div>
+                  {driver.vehicle && (
+                    <div style={{ 
+                      padding: '4px 8px', 
+                      backgroundColor: '#007bff',
+                      color: 'white',
+                      borderRadius: 3,
+                      fontSize: 11
+                    }}>
+                      🚗 {driver.vehicle}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         ) : (
-          <p style={{ color: '#666' }}>No drivers assigned for today</p>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: 40, 
+            color: '#666',
+            backgroundColor: '#f8f9fa',
+            borderRadius: 4,
+            border: '1px solid #e9ecef'
+          }}>
+            <h4 style={{ margin: '0 0 10px 0' }}>No Drivers Assigned Today</h4>
+            <p style={{ margin: 0 }}>
+              No driver shifts have been scheduled for today. 
+              Contact your organization manager to generate schedules.
+            </p>
+          </div>
         )}
+      </div>
+
+      {/* Instructions */}
+      <div style={{ 
+        marginTop: 30, 
+        padding: 15, 
+        backgroundColor: '#e3f2fd', 
+        borderRadius: 4,
+        border: '1px solid #bbdefb'
+      }}>
+        <h4 style={{ margin: '0 0 10px 0', color: '#1565c0' }}>Guard Responsibilities:</h4>
+        <ul style={{ margin: 0, paddingLeft: 20, color: '#424242' }}>
+          <li>Monitor all assigned drivers during your shift</li>
+          <li>Verify driver identity and vehicle assignments</li>
+          <li>Record entry/exit logs for vehicles</li>
+          <li>Report any irregularities to management</li>
+        </ul>
       </div>
     </div>
   );

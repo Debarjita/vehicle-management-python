@@ -45,6 +45,7 @@ urlpatterns = [
     path('assign-driver/', assign_driver_to_vehicle, name='assign-driver'),  # FIXED NAME
     path('generate-schedules/', generate_schedules, name='generate-schedules'),
     path('org-dashboard/', org_dashboard, name='org-dashboard'),
+    path('generate-schedules/', generate_schedules, name='generate-schedules'),
     
     # Guard URLs  
     path('record-attendance/', record_attendance, name='record-attendance'),

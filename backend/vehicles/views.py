@@ -1,4 +1,5 @@
-# backend/vehicles/views.py
+# backend/vehicles/views.py 
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -28,7 +29,7 @@ from PIL import Image
 import io
 import re
 import requests
-import time
+
 
 vin_call_timestamps = []
 
@@ -54,7 +55,7 @@ def upload_image(request):
     except Exception as e:
         import traceback
         print("OCR Exception:", e)
-        traceback.print_exc()  # 👈 This will show the exact error + line number
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
@@ -179,7 +180,7 @@ def vin_decode(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])  # Allow both admin and org managers
+@permission_classes([IsAuthenticated])
 def add_vehicle(request):
     """Add a new vehicle - Admin adds to any org, Org Manager adds to their org"""
     vin = request.data.get('vin', '').strip().upper()
@@ -418,7 +419,7 @@ def my_org_vehicles(request):
     return Response(vehicle_data)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])  # Remove IsOrgManager restriction for testing
+@permission_classes([IsAuthenticated])
 def create_guard_or_driver(request):
     """Create guards/drivers for organization - FIXED"""
     username = request.data.get('username')
@@ -572,60 +573,149 @@ def assign_driver_to_vehicle(request):
         return Response({'error': f'Failed to assign driver: {str(e)}'}, status=500)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsOrgManager])
+@permission_classes([IsAuthenticated])
 def generate_schedules(request):
-    """AI generates schedules for guards and drivers"""
-    date = request.data.get('date', datetime.now().date())
+    """AI generates schedules for guards and drivers - FIXED VERSION"""
+    try:
+        print(f"🤖 Schedule generation called by: {request.user.username} ({request.user.role})")
+        
+        # Parse date or use today
+        date_str = request.data.get('date')
+        if date_str:
+            try:
+                schedule_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                schedule_date = datetime.now().date()
+        else:
+            schedule_date = datetime.now().date()
+        
+        print(f"📅 Generating schedules for date: {schedule_date}")
+        
+        # Ensure user has organization (skip for admin)
+        if request.user.role != 'ADMIN' and not request.user.org:
+            return Response({'error': 'User must have an organization assigned'}, status=400)
+        
+        # Determine target organization
+        if request.user.role == 'ADMIN':
+            # Admin can generate for any org, default to first available
+            target_org = Organization.objects.first()
+            if not target_org:
+                return Response({'error': 'No organizations found'}, status=400)
+        else:
+            target_org = request.user.org
+        
+        print(f"🏢 Target organization: {target_org.name}")
+        
+        # Get org's guards and drivers
+        guards = User.objects.filter(org=target_org, role='GUARD')
+        drivers = User.objects.filter(org=target_org, role='DRIVER')
+        vehicles = Vehicle.objects.filter(org=target_org)
+        
+        print(f"👥 Found: {guards.count()} guards, {drivers.count()} drivers, {vehicles.count()} vehicles")
+        
+        if guards.count() == 0 and drivers.count() == 0:
+            return Response({
+                'error': 'No guards or drivers found in organization. Create some users first.',
+                'organization': target_org.name
+            }, status=400)
+        
+        # Delete existing schedules for this date to avoid duplicates
+        deleted_count = Shift.objects.filter(org=target_org, date=schedule_date).delete()[0]
+        if deleted_count > 0:
+            print(f"🗑️ Deleted {deleted_count} existing shifts for {schedule_date}")
+        
+        guard_shifts_created = 0
+        driver_shifts_created = 0
+        
+        # Create guard shifts (24-hour coverage) - FIXED TIME USAGE
+        shift_times = [
+            (time(6, 0), time(14, 0)),   # Morning 6AM-2PM
+            (time(14, 0), time(22, 0)),  # Afternoon 2PM-10PM  
+            (time(22, 0), time(6, 0))    # Night 10PM-6AM (next day)
+        ]
+        
+        # Assign guards to shifts
+        guard_list = list(guards)
+        if guard_list:
+            for i, (start_time, end_time) in enumerate(shift_times):
+                if i < len(guard_list):  # Only create shifts if we have guards
+                    guard = guard_list[i % len(guard_list)]  # Round-robin if more shifts than guards
+                    
+                    try:
+                        shift = Shift.objects.create(
+                            user=guard,
+                            shift_type='GUARD',
+                            date=schedule_date,
+                            start_time=start_time,
+                            end_time=end_time,
+                            org=target_org,
+                            is_active=True
+                        )
+                        guard_shifts_created += 1
+                        print(f"   ✅ Created guard shift: {guard.username} {start_time}-{end_time}")
+                    except Exception as e:
+                        print(f"   ❌ Error creating guard shift for {guard.username}: {e}")
+        
+        # Create driver shifts for available vehicles - FIXED TIME USAGE
+        available_vehicles = list(vehicles.filter(status__in=['AVAILABLE', 'ASSIGNED']))
+        driver_list = list(drivers)
+        
+        if driver_list and available_vehicles:
+            for i, vehicle in enumerate(available_vehicles):
+                if i < len(driver_list):  # Only assign if we have drivers
+                    driver = driver_list[i % len(driver_list)]  # Round-robin assignment
+                    
+                    try:
+                        # Assign driver to vehicle first
+                        vehicle.assigned_driver = driver
+                        vehicle.status = 'ASSIGNED'
+                        vehicle.save()
+                        
+                        # Create driver shift - FIXED TIME USAGE
+                        shift = Shift.objects.create(
+                            user=driver,
+                            shift_type='DRIVER',
+                            date=schedule_date,
+                            start_time=time(8, 0),   # 8AM - Using time() correctly
+                            end_time=time(17, 0),    # 5PM - Using time() correctly
+                            vehicle=vehicle,
+                            org=target_org,
+                            is_active=True
+                        )
+                        driver_shifts_created += 1
+                        print(f"   ✅ Created driver shift: {driver.username} with {vehicle.license_plate or vehicle.vin}")
+                    except Exception as e:
+                        print(f"   ❌ Error creating driver shift for {driver.username}: {e}")
+        
+        print(f"📊 Summary: {guard_shifts_created} guard shifts, {driver_shifts_created} driver shifts created")
+        
+        return Response({
+            'success': True,
+            'message': f'AI schedules generated successfully for {schedule_date}',
+            'date': schedule_date.isoformat(),
+            'guard_shifts': guard_shifts_created,
+            'driver_shifts': driver_shifts_created,
+            'organization': target_org.name,
+            'details': {
+                'total_guards_available': guards.count(),
+                'total_drivers_available': drivers.count(),
+                'total_vehicles_available': vehicles.count(),
+                'shifts_created': guard_shifts_created + driver_shifts_created,
+                'deleted_existing_shifts': deleted_count
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Error generating schedules: {e}")
+        import traceback
+        traceback.print_exc()
+        return Response({
+            'success': False,
+            'error': f'Schedule generation failed: {str(e)}',
+            'details': 'Check server logs for more information'
+        }, status=500)
     
-    # Get org's guards and drivers
-    guards = User.objects.filter(org=request.user.org, role='GUARD')
-    drivers = User.objects.filter(org=request.user.org, role='DRIVER')
-    vehicles = Vehicle.objects.filter(org=request.user.org, status='ASSIGNED')
     
-    # Simple AI scheduling logic
-    guard_shifts = []
-    driver_shifts = []
-    
-    # Create 3 guard shifts (8-hour shifts)
-    shift_times = [
-        (time(6, 0), time(14, 0)),   # Morning
-        (time(14, 0), time(22, 0)),  # Afternoon  
-        (time(22, 0), time(6, 0))    # Night
-    ]
-    
-    # Assign guards to shifts
-    for i, guard in enumerate(guards[:3]):  # Max 3 guards per day
-        start_time, end_time = shift_times[i % 3]
-        shift = Shift.objects.create(
-            user=guard,
-            shift_type='GUARD',
-            date=date,
-            start_time=start_time,
-            end_time=end_time,
-            org=request.user.org
-        )
-        guard_shifts.append(shift)
-    
-    # Assign drivers to vehicles
-    for vehicle in vehicles:
-        if vehicle.assigned_driver:
-            shift = Shift.objects.create(
-                user=vehicle.assigned_driver,
-                shift_type='DRIVER', 
-                date=date,
-                start_time=time(8, 0),  # Standard 8-5 shift
-                end_time=time(17, 0),
-                vehicle=vehicle,
-                org=request.user.org
-            )
-            driver_shifts.append(shift)
-    
-    return Response({
-        'guard_shifts': len(guard_shifts),
-        'driver_shifts': len(driver_shifts),
-        'message': 'Schedules generated successfully'
-    })
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsOrgManager])
 def org_dashboard(request):
@@ -660,7 +750,84 @@ def org_dashboard(request):
         ]
     })
 
-# GUARD FUNCTIONS
+# SIMPLIFIED GUARD DASHBOARD
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsGuard])
+def guard_dashboard(request):
+    """Simplified Guard dashboard - only assigned drivers and schedules"""
+    today = datetime.now().date()
+    
+    # Guard's shift today
+    guard_shift = Shift.objects.filter(
+        user=request.user, 
+        date=today, 
+        shift_type='GUARD'
+    ).first()
+    
+    # All driver shifts for today in this organization
+    driver_shifts = Shift.objects.filter(
+        date=today,
+        shift_type='DRIVER',
+        org=request.user.org,
+        is_active=True
+    ).select_related('user', 'vehicle').order_by('start_time')
+    
+    # Build driver list with vehicle assignments
+    assigned_drivers = []
+    for shift in driver_shifts:
+        assigned_drivers.append({
+            'id': shift.user.id,
+            'name': shift.user.username,
+            'vehicle': shift.vehicle.license_plate if shift.vehicle else 'No Vehicle',
+            'vehicle_id': shift.vehicle.id if shift.vehicle else None,
+            'shift_start': shift.start_time.strftime('%H:%M'),
+            'shift_end': shift.end_time.strftime('%H:%M'),
+            'status': 'Active' if shift.is_active else 'Inactive'
+        })
+    
+    return Response({
+        'my_shift': {
+            'start_time': guard_shift.start_time.strftime('%H:%M') if guard_shift else None,
+            'end_time': guard_shift.end_time.strftime('%H:%M') if guard_shift else None,
+            'status': 'Active' if guard_shift and guard_shift.is_active else 'No Shift Today'
+        },
+        'assigned_drivers': assigned_drivers,
+        'total_drivers_today': len(assigned_drivers)
+    })
+
+# SIMPLIFIED DRIVER DASHBOARD  
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsDriver])
+def driver_dashboard(request):
+    """Simplified Driver dashboard - only assigned vehicle and schedule"""
+    today = datetime.now().date()
+    
+    # Today's shift for this driver
+    today_shift = Shift.objects.filter(
+        user=request.user,
+        date=today,
+        shift_type='DRIVER'
+    ).select_related('vehicle').first()
+    
+    # Get assigned vehicle info
+    assigned_vehicle = Vehicle.objects.filter(assigned_driver=request.user).first()
+    
+    return Response({
+        'assigned_vehicle': {
+            'license_plate': assigned_vehicle.license_plate if assigned_vehicle else None,
+            'make': assigned_vehicle.make if assigned_vehicle else None,
+            'model': assigned_vehicle.model if assigned_vehicle else None,
+            'vin': assigned_vehicle.vin if assigned_vehicle else None,
+            'status': assigned_vehicle.status if assigned_vehicle else None
+        } if assigned_vehicle else None,
+        'todays_schedule': {
+            'has_shift': bool(today_shift),
+            'start_time': today_shift.start_time.strftime('%H:%M') if today_shift else None,
+            'end_time': today_shift.end_time.strftime('%H:%M') if today_shift else None,
+            'vehicle': today_shift.vehicle.license_plate if today_shift and today_shift.vehicle else None,
+            'status': 'Active' if today_shift and today_shift.is_active else 'No Shift Today'
+        }
+    })
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsGuard])
@@ -712,134 +879,6 @@ def verify_driver_vehicle(request):
     )
     
     return Response({'message': 'Verification completed', 'id': verification.id})
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated, IsGuard])
-def guard_dashboard(request):
-    """Guard dashboard - schedule and assigned drivers/vehicles"""
-    today = datetime.now().date()
-    
-    # Guard's shift today
-    guard_shift = Shift.objects.filter(
-        user=request.user, 
-        date=today, 
-        shift_type='GUARD'
-    ).first()
-    
-    # All drivers and vehicles for today
-    driver_shifts = Shift.objects.filter(
-        date=today,
-        shift_type='DRIVER',
-        org=request.user.org
-    ).select_related('user', 'vehicle')
-    
-    return Response({
-        'my_shift': {
-            'start_time': guard_shift.start_time.strftime('%H:%M') if guard_shift else None,
-            'end_time': guard_shift.end_time.strftime('%H:%M') if guard_shift else None,
-        },
-        'assigned_drivers': [
-            {
-                'id': shift.user.id,
-                'name': shift.user.username,
-                'vehicle': shift.vehicle.license_plate if shift.vehicle else None,
-                'vehicle_id': shift.vehicle.id if shift.vehicle else None
-            } for shift in driver_shifts
-        ]
-    })
-
-# DRIVER FUNCTIONS
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated, IsDriver])
-def driver_dashboard(request):
-    """Driver dashboard - schedule and attendance history"""
-    today = datetime.now().date()
-    
-    # Today's shift
-    today_shift = Shift.objects.filter(
-        user=request.user,
-        date=today,
-        shift_type='DRIVER'
-    ).select_related('vehicle').first()
-    
-    # Recent attendance logs
-    recent_attendance = AttendanceLog.objects.filter(
-        user=request.user
-    ).order_by('-timestamp')[:10]
-    
-    return Response({
-        'todays_schedule': {
-            'vehicle': today_shift.vehicle.license_plate if today_shift and today_shift.vehicle else None,
-            'start_time': today_shift.start_time.strftime('%H:%M') if today_shift else None,
-            'end_time': today_shift.end_time.strftime('%H:%M') if today_shift else None,
-        },
-        'attendance_history': [
-            {
-                'action': log.action,
-                'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M'),
-                'verified_by': log.verified_by.username if log.verified_by else 'Self'
-            } for log in recent_attendance
-        ]
-    })
-
-# SHARED FUNCTIONS
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def my_org_users(request):
-    """Get users from same organization - FIXED"""
-    print(f"🔍 my_org_users called by: {request.user.username} ({request.user.role}) in org: {request.user.org}")
-    
-    if not request.user.org:
-        return Response({
-            'error': 'User has no organization assigned',
-            'users': []
-        })
-    
-    role_filter = request.query_params.get('role')
-    users = User.objects.filter(org=request.user.org)
-    
-    if role_filter:
-        users = users.filter(role=role_filter)
-    
-    user_data = []
-    for user in users:
-        user_data.append({
-            'id': user.id,
-            'username': user.username, 
-            'role': user.role
-        })
-    
-    print(f"✅ Returning {len(user_data)} users for org {request.user.org.name}")
-    return Response(user_data)
-
-# Fix the my_org_vehicles endpoint  
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def my_org_vehicles(request):
-    """Get vehicles from user's organization - FIXED"""
-    print(f"🔍 my_org_vehicles called by: {request.user.username} in org: {request.user.org}")
-    
-    if not request.user.org:
-        return Response([])
-    
-    vehicles = Vehicle.objects.filter(org=request.user.org)
-    vehicle_data = []
-    
-    for vehicle in vehicles:
-        vehicle_data.append({
-            'id': vehicle.id,
-            'license_plate': vehicle.license_plate,
-            'make': vehicle.make,
-            'model': vehicle.model,
-            'vin': vehicle.vin,
-            'status': vehicle.status,
-            'assigned_driver': vehicle.assigned_driver.username if vehicle.assigned_driver else None
-        })
-    
-    print(f"✅ Returning {len(vehicle_data)} vehicles for org {request.user.org.name}")
-    return Response(vehicle_data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

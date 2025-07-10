@@ -5,7 +5,7 @@ import DashboardLayout from './DashboardLayout';
 
 function App() {
   const [currentView, setCurrentView] = useState('homepage');
-  const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem('token'));
+  const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem('accessToken'));
 
   const handleLogin = () => {
     setLoggedIn(true);
@@ -13,7 +13,7 @@ function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('accessToken');
     localStorage.removeItem('userRole');
     localStorage.removeItem('username');
     setLoggedIn(false);
@@ -21,7 +21,13 @@ function App() {
   };
 
   const showLogin = () => {
-    setCurrentView('login');
+    // Check if user is already logged in, if so go directly to dashboard
+    if (localStorage.getItem('accessToken')) {
+      setLoggedIn(true);
+      setCurrentView('dashboard');
+    } else {
+      setCurrentView('login');
+    }
   };
 
   const showHomepage = () => {
@@ -36,7 +42,7 @@ function App() {
   return (
     <div className="App">
       {currentView === 'homepage' && (
-        <Homepage onShowLogin={showLogin} />
+        <Homepage onShowLogin={handleLogin} />
       )}
       {currentView === 'login' && (
         <Login 
