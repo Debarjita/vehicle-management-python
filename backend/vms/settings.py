@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'accounts',
     'channels',
     'realtime',
+    'ai_features',
 ]
 
 MIDDLEWARE = [
@@ -125,3 +126,16 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# AI Configuration
+AI_SETTINGS = {
+    'FACE_RECOGNITION_TOLERANCE': 0.6,  # Lower = more strict
+    'MIN_FACE_CONFIDENCE': 70,  # Minimum confidence for face recognition
+    'MIN_PLATE_CONFIDENCE': 60,  # Minimum confidence for license plate detection
+    'TESSERACT_PATH': r'C:\Program Files\Tesseract-OCR\tesseract.exe',  # Windows path
+    # 'TESSERACT_PATH': '/usr/bin/tesseract',  # Linux path
+}
+
+# Media files for storing images (optional)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
